@@ -9,6 +9,7 @@ List::List() {
 }
 
 List::~List() {
+	first = nullptr;
 }
 
 bool List::exists(int d) const {
