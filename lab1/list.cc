@@ -9,7 +9,13 @@ List::List() {
 }
 
 List::~List() {
-	first = nullptr;
+	if (first != nullptr){
+		int sz = size();
+		for (int i = 0; i < sz-1; i++){
+			remove(first->next->value, List::DeleteFlag::EQUAL);
+		}
+	}
+	delete first;
 }
 
 bool List::exists(int d) const {
@@ -38,8 +44,7 @@ bool List::empty() const {
 }
 
 void List::insertFirst(int d) {
-	Node* temp = new Node(d, first);
-	first = temp;
+	first = new Node(d, first);
 }
 
 void List::remove(int d, DeleteFlag df) {
@@ -53,9 +58,11 @@ void List::remove(int d, DeleteFlag df) {
 			if ((temp -> value) == d){
 				if(previous == temp){
 					first = temp->next;
+					delete temp;
 					return;
 				}
 				previous->next = temp->next;
+				delete temp;
 				return;
 			}
 		}
@@ -63,9 +70,11 @@ void List::remove(int d, DeleteFlag df) {
 			if ((temp -> value) < d){
 				if(previous == temp){
 					first = temp->next;
+					delete temp;
 					return;
 				}
 				previous->next = temp->next;
+				delete temp;
 				return;
 			}
 		}
@@ -73,9 +82,11 @@ void List::remove(int d, DeleteFlag df) {
 			if ((temp -> value) > d){
 				if(previous == temp){
 					first = temp->next;
+					delete temp;
 					return;
 				}
 				previous->next = temp->next;
+				delete temp;
 				return;
 			}
 			

@@ -21,7 +21,7 @@ LDFLAGS =   -g
 #LDFLAGS +=  -stdlib=libc++
 
 # Targets
-PROGS =  ltest test_coding print_argv hello
+PROGS =  ltest test_coding print_argv hello encode decode
 
 all: $(PROGS)
 
@@ -33,6 +33,8 @@ ltest: ltest.o list.o
 test_coding: test_coding.o coding.o
 print_argv: print_argv.o
 hello: hello.o
+encode: encode.o coding.o
+decode: decode.o coding.o
 # Phony targets
 .PHONY: all test clean distclean
 
