@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/Lab1.dir/lab1.cc.o -o Lab1  testlib/libTestLib.a 
