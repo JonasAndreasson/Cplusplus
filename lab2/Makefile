@@ -21,7 +21,7 @@ LDFLAGS =   -g
 #LDFLAGS +=  -stdlib=libc++
 
 # Targets
-PROGS =  spell dictionary word
+PROGS =  spell
 
 all: $(PROGS)
 
@@ -30,7 +30,7 @@ test: test_coding
 
 # Targets rely on implicit rules for compiling and linking
 dictionary: dictionary.o word.o
-spell: spell.o dictionary.o
+spell: spell.o dictionary.o word.o
 #process: process.o
 word: word.o
 #test_edit_distance: test_edit_distance.o edit_distance.o

@@ -15,6 +15,9 @@ public:
 	std::vector<std::string> get_suggestions(const std::string& word) const;
 private:
 	std::unordered_set<std::string> dict;
+	void add_trigram_suggestions(std::vector<std::string> suggestions, const string& word) const{
+	
+}
 };
 
 #endif

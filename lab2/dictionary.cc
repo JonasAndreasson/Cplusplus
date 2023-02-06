@@ -36,7 +36,7 @@ Dictionary::Dictionary() {
 				}
 				vector<Word> wordvec = words[s.size()-1]; //this is an array of Vector<Word>
 				Word word_obj(s,strvec);
-				//wordvec.push_back(word_obj);
+				wordvec.push_back(word_obj);
 			}
 	}
 	in_file.close();
@@ -49,4 +49,7 @@ bool Dictionary::contains(const string& word) const {
 vector<string> Dictionary::get_suggestions(const string& word) const {
 	vector<string> suggestions;
 	return suggestions;
+}
+void Dictionary::add_trigram_suggestions(vector<string> suggestions, const string& word){
+	
 }
