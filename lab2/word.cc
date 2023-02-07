@@ -15,15 +15,16 @@ string Word::get_word() const {
 }
 
 unsigned int Word::get_matches(const vector<string>& t) const {
-	unsigned int sum(0);
+	long unsigned int sum(0);
 	unsigned int max_index = trigrams.size()-1;
 	char last_tri_fc = trigrams[max_index][0];
 	unsigned int current_tri_index = 0;
+	//ell hel llo the = thello
 	for (string s : t){
 		if (s[0]>last_tri_fc){ //If it's later in the alphabet than
 			return sum;		//our last one we can assume no ohter matches
 		}
-		while (current_tri_index<=max_index){
+		while (current_tri_index<=max_index){ //<=4?
 			if( s == trigrams[current_tri_index]){
 				sum+=1;
 				break;

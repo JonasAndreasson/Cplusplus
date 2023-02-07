@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <boost/algorithm/string.hpp>
 #include <vector>
 
 
@@ -16,7 +17,7 @@ using std::vector;
 
 vector<string> trigram(string s);
 
-int main() {
+/*int main() {
     ifstream in_file;
     string word;
     ofstream out_file;
@@ -25,9 +26,10 @@ int main() {
     if (in_file.is_open()){
         while ( getline(in_file, word, '\n') ){
             if (word.size()>=3){
+                boost::algorithm::to_lower(word);
                 vector<string> trigrams = trigram(word);
                 std::sort(trigrams.begin(), trigrams.end());
-                out_file << word <<" "<< trigrams.size();
+                out_file <<word  <<" "<< trigrams.size();
                 for (string w : trigrams){
                     out_file << " ";
                     out_file << w;
@@ -38,11 +40,11 @@ int main() {
     }
     out_file.close();
     in_file.close();
-}
+}*/
 
 vector<string> trigram(string word){
     vector<string> v = {};
-    for (int i = 1; i<word.size()-1; i++){
+    for (unsigned int i = 1; i<word.size()-1; i++){
         char temp[3];
         temp[0] = tolower(word[i-1]);
         temp[1] = tolower(word[i]);

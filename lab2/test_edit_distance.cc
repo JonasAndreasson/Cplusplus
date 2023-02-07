@@ -5,7 +5,6 @@
  * and it is assumed to be declared in edit_distance.h
  */
 #include "edit_distance.h"
-
 #include <iostream>
 
 bool do_test(const std::string& x, const std::string& y, int expected)

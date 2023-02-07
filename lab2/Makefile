@@ -21,7 +21,7 @@ LDFLAGS =   -g
 #LDFLAGS +=  -stdlib=libc++
 
 # Targets
-PROGS =  spell
+PROGS = spell test_edit_distance#process
 
 all: $(PROGS)
 
@@ -29,11 +29,11 @@ test: test_coding
 	./test_coding
 
 # Targets rely on implicit rules for compiling and linking
-dictionary: dictionary.o word.o
+dictionary: dictionary.o word.o process.o
 spell: spell.o dictionary.o word.o
-#process: process.o
+process: process.o
 word: word.o
-#test_edit_distance: test_edit_distance.o edit_distance.o
+test_edit_distance: test_edit_distance.o edit_distance.o
 # Phony targets
 #.PHONY: all test clean distclean
 
