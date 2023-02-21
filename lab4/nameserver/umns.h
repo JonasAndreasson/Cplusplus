@@ -1,16 +1,16 @@
-#ifndef DNS_H
-#define DNS_H
-#include <vector>
+#ifndef UMNS_H
+#define UMNS_H
+#include <unordered_map>
 #include <string>
 #include <utility>
 #include "nameserverinterface.h"
-class VNS: public NameServerInterface{
+class UMNS: public NameServerInterface{
     public:
-    VNS();
+    UMNS();
 	void insert(const HostName&, const IPAddress&);
 	bool remove(const HostName&);
 	IPAddress lookup(const HostName&) const;
     private:
-    std::vector<std::pair<HostName, IPAddress>> data;
+    std::unordered_map<HostName, IPAddress> data;
 };
 #endif

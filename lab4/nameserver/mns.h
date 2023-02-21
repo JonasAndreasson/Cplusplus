@@ -1,16 +1,16 @@
-#ifndef DNS_H
-#define DNS_H
-#include <vector>
+#ifndef MNS_H
+#define MNS_H
+#include <map>
 #include <string>
 #include <utility>
 #include "nameserverinterface.h"
-class VNS: public NameServerInterface{
+class MNS: public NameServerInterface{
     public:
-    VNS();
+    MNS();
 	void insert(const HostName&, const IPAddress&);
 	bool remove(const HostName&);
 	IPAddress lookup(const HostName&) const;
     private:
-    std::vector<std::pair<HostName, IPAddress>> data;
+    std::map<HostName, IPAddress> data;
 };
 #endif

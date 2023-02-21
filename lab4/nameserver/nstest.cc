@@ -13,7 +13,7 @@
 using namespace std;
 
 void test(NameServerInterface& ns) {
-#if 0
+#if 1
 	ns.insert("www.Bosse.se", 1);
 	ns.insert("www.Ek.se", 2);
 	assert(ns.lookup("www.Bosse.se") == 1);

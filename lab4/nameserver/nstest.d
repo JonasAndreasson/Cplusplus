@@ -1,0 +1,1 @@
+nstest: nameserverinterface.h
