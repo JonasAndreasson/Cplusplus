@@ -1,3 +1,5 @@
+#ifndef MEMSERVER_H
+#define MEMSERVER_H
 #include "server.h"
 #include "serverinterface.h"
 class MemoryServer : public ServerInterface{
@@ -13,3 +15,4 @@ class MemoryServer : public ServerInterface{
     std::vector<Article> article_list;
     std::vector<Newsgroup> newsgroup_list;
 };
+#endif

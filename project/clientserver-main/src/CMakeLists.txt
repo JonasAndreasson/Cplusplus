@@ -1,6 +1,31 @@
-cmake_minimum_required(VERSION 3.14)
-target_sources(clientserver
+macro(add_program TESTNAME)
+  # create an exectuable with project-defined flags
+  add_executable(${TESTNAME} ${ARGN})
+
+  target_compile_options(${TESTNAME}
     PRIVATE
-        connection.cc
-        server.cc
-)
+      ${clientserver_sanitizer_options}
+  )
+
+  target_compile_definitions(${TESTNAME}
+    PRIVATE
+      ${clientserver_config_defines}
+  )
+
+  target_include_directories(${TESTNAME}
+    PUBLIC
+      ${clientserver_public_include_dirs}
+    PRIVATE
+      ${clientserver_private_include_dirs}
+  )
+
+  target_link_libraries(${TESTNAME}
+    PUBLIC
+      clientserver
+    PRIVATE
+      ${clientserver_sanitizer_options}
+  )
+endmacro()
+add_program(memserver memserver.cc)
+
+install(TARGETS memserver)

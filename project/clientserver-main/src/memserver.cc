@@ -1,69 +1,80 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <functional>
 #include "memserver.h"
 #include "serverinterface.h"
 #include "connection.h"
 #include "connectionclosedexception.h"
-#include <iostream>
+#include "protocol.h"
 using std::cerr;
 using std::endl;
 using std::cout;
-MemoryServer::MemoryServer(int port):server(port){
-    
+MemoryServer::MemoryServer(int port):server(port),newsgroup_list(){
 }
 void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
+    cout << "Entered NewsGroup\n";
     unsigned char byte2 = conn->read();
-    unsigned char byte3 = conn->read();
-    unsigned char byte4 = conn->read();
-    if (byte2 != MessageHandler::COM_END){
-        //ERROR?
+    if ((Protocol)byte2 != Protocol::COM_END){
+        cout << "Expected COM_END" << '\n';
+        //KILL CONNECTION
     }
+    cout << "Sending response\n";
     send_newsgroup(conn);
 }
 void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
-    conn->write(MessageHandler::ANS_LIST_NG); //8
-    conn->write(newsgroup_list.size()); // 16
-    //For i in newsgroup_list 
-    //conn->write(i.id);    //40
-    //conn->write(i.title) //(40 +8*N)* M 
-    conn->write(MessageHandler::ANS_END);
-    //then send padding
-    //conn->write(0x00);
+    conn->write((unsigned char)Protocol::ANS_LIST_NG); //8
+    conn->write((unsigned char)Protocol::PAR_NUM);
+    auto size = newsgroup_list.size();
+    send_N(conn, size);
+    for (auto &newsgroup : newsgroup_list)
+    {
+        conn->write((unsigned char)Protocol::PAR_NUM);
+        send_N(conn,newsgroup.id);
+        conn->write((unsigned char)Protocol::PAR_STRING);
+        send_N(conn,newsgroup.name.size());
+        for (char &c : newsgroup.name){
+            conn->write(c);
+        }
+    }
+    conn->write((unsigned char)Protocol::ANS_END);
+    cout << "Sending Termination code\n";
 }
 
 void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned byte2 = conn->read(); // string_p COM_END
-    if (byte2 != MessageHandler::PAR_STRING){
-        //Disconnect user
-        //kill connection.
+    unsigned char byte = conn->read(); // string_p COM_END
+    if ((Protocol)byte != Protocol::PAR_STRING){
+        cout << "Invalid start parameter";
         return;
     }
-    byte2 = conn->read();
+    unsigned int N = read_N(conn);
+    cout << "Expecting length of "<< N << '\n';
     std::string sb = "";
-    for (unsigned char i = 0; i < byte2; i++){
-        byte2 = conn->read(); //this is the chars that should make a string.
-        sb+=byte2;
+    for (unsigned int i = 0; i < N; i++){
+        byte = conn->read(); //this is the chars that should make a string.
+        sb+=byte;
     }
-    if(conn->read() != MessageHandler::COM_END){
-        //something is wrong. Kill connection
+    if((Protocol)conn->read() != Protocol::COM_END){
         return;
     }
-
+    cout << "The name of the newsgroup is " << sb << '\n';
     
-    bool exists = true;
-    conn->write(MessageHandler::ANS_CREATE_NG);
-    if(exists){
-    Newsgroup ng;
-    //ng.created=now;
-    //ng.id = static counter
-    //ng.articles = empty vector;
-    ng.name=sb;
+    bool exists = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&sb] (Newsgroup ng) -> bool { return sb == ng.name; }) != newsgroup_list.end();
+    conn->write((unsigned char)Protocol::ANS_CREATE_NG);
+    if(!exists){
+    std::vector<Article> articles();
+    Newsgroup ng = {sb,std::hash<std::string>{}(sb),time(NULL)};
     newsgroup_list.push_back(ng);
-    conn->write(MessageHandler::ANS_ACK);
-    conn->write(MessageHandler::ANS_END);
-    conn->write(0x00);
+    conn->write((unsigned char)Protocol::ANS_ACK);
+    conn->write((unsigned char)Protocol::ANS_END);
     } else {
-        conn->write(MessageHandler::ANS_NAK);
-        conn->write(ERR_NG_ALREADY_EXIST);
-        conn->write(MessageHandler::ANS_END);
+        conn->write((unsigned char)Protocol::ANS_NAK);
+        conn->write((unsigned char)Protocol::ERR_NG_ALREADY_EXISTS);
+        conn->write((unsigned char)Protocol::ANS_END);
     }
     
 }

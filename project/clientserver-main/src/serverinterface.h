@@ -1,34 +1,10 @@
+#ifndef SERVER_INTERFACE_H
+#define SERVER_INTERFACE_H
 #include <vector>
+#include <string.h>
+#include <iostream>
 #include "connection.h"
-enum MessageHandler: unsigned char {
-/* Command Codes, client -> server */
-COM_LIST_NG = 0x01,
-COM_CREATE_NG = 0x02,
-COM_DELETE_NG = 0x03,
-COM_LIST_ART = 0x04,
-COM_CREATE_ART = 0x05,
-COM_DELETE_ART = 0x06,
-COM_GET_ART = 0x07,
-COM_END = 0x10,
-/* Answer Codes, server -> client */
-ANS_LIST_NG = 0x11,
-ANS_CREATE_NG = 0x12,
-ANS_DELETE_NG = 0x13,
-ANS_LIST_ART = 0x14,
-ANS_CREATE_ART = 0x15,
-ANS_DELETE_ART = 0x16,
-ANS_GET_ART = 0x17,
-ANS_END = 0x20,
-ANS_ACK = 0x21,
-ANS_NAK = 0x22,
-/* Error Codes */
-ERR_NG_DOES_NOT_EXIST = 0x30,
-ERR_NG_ALREADY_EXIST = 0x31,
-ERR_ART_DOES_NOT_EXIST = 0x40,
-/* Parameters */
-PAR_STRING = 0xf0,
-PAR_NUM = 0xff,
-};
+#include "protocol.h"
 class ServerInterface{
     public:
     virtual bool isReady() = 0;
@@ -36,36 +12,66 @@ class ServerInterface{
     virtual void send_newsgroup(std::shared_ptr<Connection>&) = 0;
     virtual void list_newsgroup(std::shared_ptr<Connection>&) = 0;
     virtual void create_newsgroup(std::shared_ptr<Connection>&) = 0;
+    void send_N(std::shared_ptr<Connection>& conn, unsigned int N){
+        unsigned char byte1 = N % 256;
+        N/=256;
+        unsigned char byte2 = N % 256;
+        N/=256;
+        unsigned char byte3 = N % 256;
+        N/=256;
+        unsigned char byte4 = N % 256;
+        conn->write(byte4); // <- 0x00 0x00 0x00 0xN
+        conn->write(byte3); // <- 0x00 0x00 0x00 0xN
+        conn->write(byte2); // <- 0x00 0x00 0x00 0xN
+        conn->write(byte1); // <- 0x00 0x00 0x00 0xN
+    }
+    unsigned int read_N(std::shared_ptr<Connection>& conn){
+        unsigned char byte1 = conn->read();
+        unsigned char byte2 = conn->read();
+        unsigned char byte3 = conn->read();
+        unsigned char byte4 = conn->read();
+        unsigned int N = 0x00;
+        N = (N << 8) | byte1;
+        N = (N << 8) | byte2;
+        N = (N << 8) | byte3;
+        N = (N << 8) | byte4;
+        return N;
+    }
     void process_request(std::shared_ptr<Connection>& conn){
         unsigned char byte1 = conn->read();
-        switch(byte1){
-            case MessageHandler::COM_LIST_NG:
+        switch((Protocol)byte1){
+            case Protocol::COM_LIST_NG:
+                std::cout << "Listing news group\n";
                 list_newsgroup(conn);
                 break;
-            case MessageHandler::COM_CREATE_NG:
+            case Protocol::COM_CREATE_NG:
+                std::cout << "create news group\n";
+                create_newsgroup(conn);
                 break;
-            case MessageHandler::COM_DELETE_NG:
+            case Protocol::COM_DELETE_NG:
+                std::cout << "delete news group\n";
                 break;
-            case MessageHandler::COM_LIST_ART:
+            case Protocol::COM_LIST_ART:
                 break;
-            case MessageHandler::COM_CREATE_ART:
+            case Protocol::COM_CREATE_ART:
                 break;
-            case MessageHandler::COM_DELETE_ART:
+            case Protocol::COM_DELETE_ART:
                 break;
-            case MessageHandler::COM_GET_ART:
+            case Protocol::COM_GET_ART:
                 break;
             default:
+                break;
         }
     }
     struct Article{
-        std::string title; //there is a limitation, although 2047 chars i likely enough
-        std::string author;
+        std::string* title; //there is a limitation, although 2047 chars i likely enough
+        std::string* author;
         int id; //unique and non-reusable
         time_t created; // make this so it's invoked when the struct is created;
     };
     struct Newsgroup{
         std::string name; //there is a limitation, although 2047 chars i likely enough
-        int id; //unique and non-reusable
+        long unsigned int id; //unique and non-reusable
         time_t created; // make this so it's invoked when the struct is created
         std::vector<Article> articles;
     };
@@ -73,3 +79,4 @@ class ServerInterface{
     private:
 
 };
+#endif
