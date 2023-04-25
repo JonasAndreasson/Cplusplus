@@ -33,14 +33,9 @@ void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
     {
         conn->write((unsigned char)Protocol::PAR_NUM);
         send_N(conn,newsgroup.id);
-        conn->write((unsigned char)Protocol::PAR_STRING);
-        send_N(conn,newsgroup.name.size());
-        for (char &c : newsgroup.name){
-            conn->write(c);
-        }
+        send_string_p(conn, newsgroup.name);
     }
     conn->write((unsigned char)Protocol::ANS_END);
-    cout << "Sending Termination code\n";
 }
 
 void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
@@ -50,7 +45,6 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
         return;
     }
     unsigned int N = read_N(conn);
-    cout << "Expecting length of "<< N << '\n';
     std::string sb = "";
     for (unsigned int i = 0; i < N; i++){
         byte = conn->read(); //this is the chars that should make a string.
@@ -59,7 +53,6 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read() != Protocol::COM_END){
         return;
     }
-    cout << "The name of the newsgroup is " << sb << '\n';
     
     bool exists = std::find_if(newsgroup_list.begin(),
              newsgroup_list.end(), 
@@ -67,7 +60,7 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char)Protocol::ANS_CREATE_NG);
     if(!exists){
     std::vector<Article> articles();
-    Newsgroup ng = {sb,std::hash<std::string>{}(sb),time(NULL)};
+    Newsgroup ng = {sb,(uint32_t)std::hash<std::string>{}(sb),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
     newsgroup_list.push_back(ng);
     conn->write((unsigned char)Protocol::ANS_ACK);
     conn->write((unsigned char)Protocol::ANS_END);
@@ -76,9 +69,183 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
         conn->write((unsigned char)Protocol::ERR_NG_ALREADY_EXISTS);
         conn->write((unsigned char)Protocol::ANS_END);
     }
-    
 }
 
+void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
+    if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        return;
+    }
+    unsigned int id = read_N(conn);
+    if ((Protocol)conn->read() != Protocol::COM_END){
+        return;
+    }
+    auto it = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&id] (Newsgroup ng) -> bool { return id == ng.id; });
+    bool exists = it != newsgroup_list.end();
+    conn->write((unsigned char)Protocol::ANS_DELETE_NG);
+    if (exists){
+        newsgroup_list.erase(it);
+        conn->write((unsigned char)Protocol::ANS_ACK);
+    } else {
+        conn->write((unsigned char)Protocol::ANS_NAK);
+        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
+    }
+    conn->write((unsigned char)Protocol::ANS_END);
+}
+void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
+    if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        return;
+    }
+    unsigned int id = read_N(conn);
+    if ((Protocol)conn->read() != Protocol::COM_END){
+        return;
+    }
+    auto it = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&id] (Newsgroup ng) -> bool { return id == ng.id; });
+    bool exists = it != newsgroup_list.end();
+    conn->write((unsigned char)Protocol::ANS_LIST_ART);
+
+    if (exists){
+        conn->write((unsigned char)Protocol::ANS_ACK);
+        conn->write((unsigned char)Protocol::PAR_NUM);
+        unsigned int size = (*it).articles.size();
+        send_N(conn,size);
+        for (Article& a : (*it).articles){
+            conn->write((unsigned char)Protocol::PAR_NUM);
+            send_N(conn,a.id);
+            send_string_p(conn, a.title);
+        }
+    } else{
+        conn->write((unsigned char)Protocol::ANS_NAK);
+        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
+    }
+    conn->write((unsigned char)Protocol::ANS_END);
+}
+void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
+    if ((Protocol)conn->read()!=Protocol::PAR_NUM){
+        return;
+    }
+    long unsigned int news_group_id = read_N(conn);
+    cout << news_group_id << '\n';
+    for (Newsgroup ng : newsgroup_list){
+        cout << ng.id <<'\n';
+    }
+    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        return;
+    }
+    auto title_N = read_N(conn);
+    std::string title = "";
+    for (unsigned int i =0; i<title_N;++i){
+        title+=conn->read();
+    }
+
+    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        return;
+    }
+    auto author_N = read_N(conn);
+    std::string author = "";
+    for (unsigned int i =0; i<author_N;++i){
+        author+=conn->read();
+    }
+
+    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        return;
+    }
+    auto text_N = read_N(conn);
+    std::string text = "";
+        for (unsigned int i =0; i<text_N;++i){
+        text+=conn->read();
+    }
+    if((Protocol)conn->read()!=Protocol::COM_END){
+        return;
+    }
+
+    auto it = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
+    bool exists = it != newsgroup_list.end();
+    conn->write((unsigned char) Protocol::ANS_CREATE_ART);
+    if (exists){
+        conn->write((unsigned char) Protocol::ANS_ACK);
+        Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
+        (*it).articles.push_back(art);
+    } else {
+        conn->write((unsigned char) Protocol::ANS_NAK);
+        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+    }
+    conn->write((unsigned char) Protocol::ANS_END);
+}
+void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
+    if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        return;
+    }
+    auto news_group_id = read_N(conn);
+    if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        return;
+    }
+    auto article_id = read_N(conn);
+    if((Protocol)conn->read()!=Protocol::COM_END){
+        return;
+    }
+    auto ng_it = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
+    bool exists = ng_it != newsgroup_list.end();
+    conn->write((unsigned char) Protocol::ANS_DELETE_ART);
+    if (exists){
+        auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
+        if(art_it!=(*ng_it).articles.end()){
+            (*ng_it).articles.erase(art_it);
+            conn->write((unsigned char) Protocol::ANS_ACK);    
+        } else {
+        conn->write((unsigned char) Protocol::ANS_NAK);
+        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        }
+    } else {
+        conn->write((unsigned char) Protocol::ANS_NAK);
+        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+    }
+    conn->write((unsigned char) Protocol::ANS_END);
+}
+void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
+    if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        return;
+    }
+    auto news_group_id = read_N(conn);
+    if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        return;
+    }
+    auto article_id = read_N(conn);
+    if((Protocol)conn->read()!=Protocol::COM_END){
+        return;
+    }
+    auto ng_it = std::find_if(newsgroup_list.begin(),
+             newsgroup_list.end(), 
+             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
+    bool exists = ng_it != newsgroup_list.end();
+    conn->write((unsigned char) Protocol::ANS_GET_ART);
+    if (exists){
+        auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
+        if(art_it!=(*ng_it).articles.end()){
+            conn->write((unsigned char) Protocol::ANS_ACK);
+            //titel
+            send_string_p(conn, (*art_it).title);
+            //author
+            send_string_p(conn, (*art_it).author);
+            //text
+            send_string_p(conn, (*art_it).text);
+        } else {
+        conn->write((unsigned char) Protocol::ANS_NAK);
+        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        }
+    } else {
+        conn->write((unsigned char) Protocol::ANS_NAK);
+        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+    }
+    conn->write((unsigned char) Protocol::ANS_END);
+}
 bool MemoryServer::isReady(){
     return server.isReady();
 }
@@ -101,7 +268,6 @@ void MemoryServer::serve_one(){
 void serve_one(ServerInterface& server){
     server.serve_one();
 }
-
 MemoryServer init(int argc, char* argv[]){
         if (argc != 2) {
                 cerr << "Usage: myserver port-number" << endl;
@@ -123,7 +289,6 @@ MemoryServer init(int argc, char* argv[]){
         }
         return server;
 }
-
 int main(int argc, char* argv[])
 {
         auto server = init(argc, argv);

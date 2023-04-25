@@ -12,6 +12,11 @@ class ServerInterface{
     virtual void send_newsgroup(std::shared_ptr<Connection>&) = 0;
     virtual void list_newsgroup(std::shared_ptr<Connection>&) = 0;
     virtual void create_newsgroup(std::shared_ptr<Connection>&) = 0;
+    virtual void remove_newsgroup(std::shared_ptr<Connection>&) = 0;
+    virtual void list_article(std::shared_ptr<Connection>&) = 0;
+    virtual void create_article(std::shared_ptr<Connection>&) = 0;
+    virtual void delete_article(std::shared_ptr<Connection>&) = 0;
+    virtual void get_article(std::shared_ptr<Connection>&) = 0;
     void send_N(std::shared_ptr<Connection>& conn, unsigned int N){
         unsigned char byte1 = N % 256;
         N/=256;
@@ -37,6 +42,13 @@ class ServerInterface{
         N = (N << 8) | byte4;
         return N;
     }
+    void send_string_p(std::shared_ptr<Connection>& conn, std::string& s){
+        conn->write((unsigned char)Protocol::PAR_STRING);
+        send_N(conn,s.size());
+        for (char &c : s){
+            conn->write(c);
+        }
+    }
     void process_request(std::shared_ptr<Connection>& conn){
         unsigned char byte1 = conn->read();
         switch((Protocol)byte1){
@@ -50,33 +62,38 @@ class ServerInterface{
                 break;
             case Protocol::COM_DELETE_NG:
                 std::cout << "delete news group\n";
+                remove_newsgroup(conn);
                 break;
             case Protocol::COM_LIST_ART:
+                list_article(conn);
                 break;
             case Protocol::COM_CREATE_ART:
+                create_article(conn);
                 break;
             case Protocol::COM_DELETE_ART:
+                delete_article(conn);
                 break;
             case Protocol::COM_GET_ART:
+                get_article(conn);
                 break;
             default:
                 break;
         }
     }
     struct Article{
-        std::string* title; //there is a limitation, although 2047 chars i likely enough
-        std::string* author;
-        int id; //unique and non-reusable
+        std::string title; //there is a limitation, although 2047 chars i likely enough
+        std::string author;
+        std::string text;
+        unsigned int id; //unique and non-reusable
         time_t created; // make this so it's invoked when the struct is created;
     };
     struct Newsgroup{
         std::string name; //there is a limitation, although 2047 chars i likely enough
-        long unsigned int id; //unique and non-reusable
+        unsigned int id; //unique and non-reusable
         time_t created; // make this so it's invoked when the struct is created
         std::vector<Article> articles;
     };
 
     private:
-
 };
 #endif
