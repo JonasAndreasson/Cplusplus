@@ -23,6 +23,7 @@ void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
     }
     cout << "Sending response\n";
     send_newsgroup(conn);
+    cout << "Reponse sent\n";
 }
 void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char)Protocol::ANS_LIST_NG); //8
