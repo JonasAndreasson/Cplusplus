@@ -65,6 +65,9 @@ void print_protocol_response(const Protocol p){
     case Protocol::ERR_NG_DOES_NOT_EXIST:
         cout << "A newsgroup with that name doesn't exists" << endl;
         break;
+    case Protocol::ERR_ART_DOES_NOT_EXIST:
+        cout << "That article does not exist!" << endl;
+        break;
     case Protocol::UNDEFINED:
         cout << "Something went wrong, terminating!";
         exit(1);
@@ -251,7 +254,15 @@ void list_article(const Connection& conn){
         cout << p.first <<":" << p.second <<endl;
     }
     } else if (response == Protocol::ANS_NAK){
-
+        if ((Protocol)conn.read() != Protocol::ERR_NG_DOES_NOT_EXIST){
+            cout << "Something went wrong! Terminating!";
+            exit(1);
+        }
+        if ((Protocol)conn.read() != Protocol::ANS_END){
+            cout << "Something went wrong! Terminating!";
+            exit(1);
+        }
+        print_protocol_response(Protocol::ERR_NG_DOES_NOT_EXIST);
     } else {
         cout << "Something went wrong! Terminating!";
         exit(1);
@@ -290,7 +301,61 @@ Protocol delete_newsgroup(const Connection& conn){
         return Protocol::UNDEFINED;
     }
 }
-
+void get_article(const Connection& conn){
+    std::string newsgroup_name;
+    std::string buffer;
+    cout << "Please enter newsgroup name:" << endl;
+    cin >> buffer;
+    std::getline(cin,newsgroup_name);
+    if (newsgroup_name != ""){
+        newsgroup_name = buffer + newsgroup_name;
+    } else {
+        newsgroup_name = buffer;
+    }
+    cout << "Please enter article id:" << endl;
+    uint32_t article_id;
+    cin >> article_id;
+    uint32_t newsgroup_id = (uint32_t)std::hash<std::string>{}(newsgroup_name);
+    //Sending data
+    conn.write((unsigned char)Protocol::COM_GET_ART);
+    conn.write((unsigned char)Protocol::PAR_NUM);
+    send_N(conn, newsgroup_id);
+    conn.write((unsigned char)Protocol::PAR_NUM);
+    send_N(conn, article_id);
+    conn.write((unsigned char)Protocol::COM_END);
+    //Recieving data
+    if ((Protocol) conn.read() != Protocol::ANS_GET_ART){
+        //Something went wrong
+        return;
+    }
+    Protocol response = (Protocol) conn.read();
+    if (response == Protocol::ANS_ACK){
+        std::string title = read_string_p(conn);
+        std::string author = read_string_p(conn);
+        std::string text = read_string_p(conn);
+        if((Protocol) conn.read() != Protocol::ANS_END){
+            //Something went wrong
+            return;
+        }
+        // Print out the text
+        cout << "Title: " << title <<endl;
+        cout << "Author: " << author << endl;
+        cout << text << endl;
+    }else if (response == Protocol::ANS_NAK)
+    {
+        response = (Protocol) conn.read();
+        if (response == Protocol::ERR_NG_DOES_NOT_EXIST || response == Protocol::ERR_ART_DOES_NOT_EXIST){
+            print_protocol_response(response);
+        } else {
+            //something went wrong
+            return;
+        }
+    } else {
+        //SOMETHING WENT WRONG
+        return;
+    }
+    
+}
 int app(const Connection& conn){
     std::string command;
     std::string subcommand;
@@ -345,6 +410,11 @@ int app(const Connection& conn){
         }
         else if (command == "get"){
             cin >> subcommand;
+            if (subcommand == "article"){
+                get_article(conn);
+            } else {
+                cout << "The command \"get "<< subcommand << "\" doesn't exist" << endl;
+            }
         } else {
         cout << command << " is not a valid command!\n";
         }

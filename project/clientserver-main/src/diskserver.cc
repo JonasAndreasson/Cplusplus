@@ -1,10 +1,18 @@
 #include <iostream>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <cstdio>
+#include <ios>
 #include <vector>
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <string>
 #include <functional>
-#include "memserver.h"
+#include "diskserver.h"
 #include "serverinterface.h"
 #include "connection.h"
 #include "connectionclosedexception.h"
@@ -12,9 +20,75 @@
 using std::cerr;
 using std::endl;
 using std::cout;
-MemoryServer::MemoryServer(int port):server(port),newsgroup_list(){
+using std::ofstream;
+
+size_t DiskServer::database_size(){
+    int file_count = 0;
+    DIR * dirp;
+    struct dirent * entry;
+
+    dirp = opendir("./database"); /* There should be error handling after this */
+    while ((entry = readdir(dirp)) != NULL) {
+        if (entry->d_type == DT_DIR) { /* If the entry is a regular file */
+            file_count++; 
+        }
+    }
+    closedir(dirp);
+    return file_count-2;
 }
-void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
+
+
+int DiskServer::get_line_newsgroup(uint32_t id){}
+int DiskServer::get_line_article(uint32_t id){}
+void DiskServer::delete_article(int line){}
+void DiskServer::add_article(Article art){}
+void DiskServer::add_newsgroup(Newsgroup ng){}
+void DiskServer::delete_newsgroup(int line){}
+std::vector<ServerInterface::Article> DiskServer::articles_related_to_newsgroup(int line){}
+std::vector<ServerInterface::Newsgroup> DiskServer::newsgroup_list(){
+    std::vector<ServerInterface::Newsgroup> list;
+    std::string line;
+    std::ifstream file;
+    DIR * dirp, *sbdir;
+    struct dirent * entry;
+    dirp = opendir("./database");
+    while ((entry = readdir(dirp)) != NULL) {
+    if (entry->d_type == DT_DIR) { /* If the entry is a regular file */
+        std::string subpath = entry->d_name;
+        if (subpath == "." || subpath == ".."){
+
+        } else {
+        subpath = "./database/" + subpath;
+        std::string name;
+        std::string buffer;
+        cout << subpath <<endl;
+        file.open(subpath+"/name");
+        while (file >> buffer){
+            name += buffer + " ";
+        }
+        name = name.substr(0,name.size()-1);
+        file.close();
+        time_t created;
+        file.open(subpath+"/created");
+        file >> created;
+        file.close();
+        cout << name << endl;
+        Newsgroup ng = {name,(uint32_t)std::hash<std::string>{}(name),created};
+        list.push_back(ng);
+        }
+    }
+    }
+    closedir(dirp);
+    return list;
+}
+std::string DiskServer::get_article_title(int line){}
+std::string DiskServer::get_article_author(int line){}
+std::string DiskServer::get_article_text(int line){}
+
+
+DiskServer::DiskServer(int port):server(port){
+}
+void DiskServer::list_newsgroup(std::shared_ptr<Connection>& conn){
     cout << "Entered NewsGroup\n";
     unsigned char byte2 = conn->read();
     if ((Protocol)byte2 != Protocol::COM_END){
@@ -25,13 +99,15 @@ void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
     send_newsgroup(conn);
     cout << "Reponse sent\n";
 }
-void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
+void DiskServer::send_newsgroup(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char)Protocol::ANS_LIST_NG); //8
     conn->write((unsigned char)Protocol::PAR_NUM);
-    auto size = newsgroup_list.size();
+    auto size = database_size();
     send_N(conn, size);
-    for (auto &newsgroup : newsgroup_list)
+    for (auto &newsgroup : newsgroup_list())
     {
+        cout << newsgroup.id << endl;
+        cout << newsgroup.name << endl;
         conn->write((unsigned char)Protocol::PAR_NUM);
         send_N(conn,newsgroup.id);
         send_string_p(conn, newsgroup.name);
@@ -39,7 +115,7 @@ void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char)Protocol::ANS_END);
 }
 
-void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
+void DiskServer::create_newsgroup(std::shared_ptr<Connection>& conn){
     unsigned char byte = conn->read(); // string_p COM_END
     if ((Protocol)byte != Protocol::PAR_STRING){
         cout << "Invalid start parameter";
@@ -52,27 +128,51 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
         sb+=byte;
     }
     if((Protocol)conn->read() != Protocol::COM_END){
+        cout << "Expected Com_END" << endl;
         return;
     }
-    
-    bool exists = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&sb] (Newsgroup ng) -> bool { return sb == ng.name; }) != newsgroup_list.end();
+    cout << "Trying to create dir" << endl;
+    std::string path = "database/"+std::to_string((uint32_t)std::hash<std::string>{}(sb));
+    auto ng_index = mkdir(path.c_str(),S_IRWXU);
+    perror("mkdir");
+    bool exists = ng_index == -1;
     conn->write((unsigned char)Protocol::ANS_CREATE_NG);
     if(!exists){
-    std::vector<Article> articles();
-    Newsgroup ng = {sb,(uint32_t)std::hash<std::string>{}(sb),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
-    newsgroup_list.push_back(ng);
-    conn->write((unsigned char)Protocol::ANS_ACK);
-    conn->write((unsigned char)Protocol::ANS_END);
+        ofstream file(path+"/name");
+        file << sb<< endl;
+        file.close();
+        file.open(path+"/created");
+        file <<time(NULL) << endl;
+        file.close();
+        conn->write((unsigned char)Protocol::ANS_ACK);
+        conn->write((unsigned char)Protocol::ANS_END);
     } else {
         conn->write((unsigned char)Protocol::ANS_NAK);
         conn->write((unsigned char)Protocol::ERR_NG_ALREADY_EXISTS);
         conn->write((unsigned char)Protocol::ANS_END);
     }
 }
-
-void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
+void rm_subdir(std::string path){
+    DIR * dirp, *sbdir;
+    struct dirent * entry;
+    dirp = opendir(path.c_str());
+    while ((entry = readdir(dirp)) != NULL) {
+        std::string subpath = entry->d_name;
+        if (entry->d_type == DT_DIR) { /* If the entry is a regular file */
+            if (subpath == "." || subpath == ".."){
+                    
+            } else {
+                subpath = path +"/"+ subpath;
+                rm_subdir(subpath);
+            }
+        } else if (entry->d_type == DT_REG){
+            remove((path+"/"+subpath).c_str());
+        }
+    }
+    closedir(dirp);
+    rmdir(path.c_str());
+}
+void DiskServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
         return;
     }
@@ -80,21 +180,21 @@ void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::COM_END){
         return;
     }
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&id] (Newsgroup ng) -> bool { return id == ng.id; });
-    bool exists = it != newsgroup_list.end();
+    std::string path = "database/"+std::to_string(id);
+    auto ng_index = mkdir(path.c_str(),S_IRWXU);
+    bool exists = ng_index == -1;
     conn->write((unsigned char)Protocol::ANS_DELETE_NG);
-    if (exists){
-        newsgroup_list.erase(it);
+        if (exists){
+        rm_subdir(path);
         conn->write((unsigned char)Protocol::ANS_ACK);
     } else {
+        rmdir(path.c_str());
         conn->write((unsigned char)Protocol::ANS_NAK);
         conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
     }
     conn->write((unsigned char)Protocol::ANS_END);
 }
-void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
+void DiskServer::list_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
         return;
     }
@@ -102,18 +202,16 @@ void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::COM_END){
         return;
     }
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&id] (Newsgroup ng) -> bool { return id == ng.id; });
-    bool exists = it != newsgroup_list.end();
+    auto ng_index = get_line_newsgroup(id);
+    bool exists = ng_index != -1;
     conn->write((unsigned char)Protocol::ANS_LIST_ART);
 
     if (exists){
         conn->write((unsigned char)Protocol::ANS_ACK);
         conn->write((unsigned char)Protocol::PAR_NUM);
-        unsigned int size = (*it).articles.size();
+        unsigned int size = database_size();
         send_N(conn,size);
-        for (Article& a : (*it).articles){
+        for (Article& a : articles_related_to_newsgroup(ng_index)){
             conn->write((unsigned char)Protocol::PAR_NUM);
             send_N(conn,a.id);
             send_string_p(conn, a.title);
@@ -124,15 +222,11 @@ void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
     }
     conn->write((unsigned char)Protocol::ANS_END);
 }
-void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
+void DiskServer::create_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read()!=Protocol::PAR_NUM){
         return;
     }
     long unsigned int news_group_id = read_N(conn);
-    cout << news_group_id << '\n';
-    for (Newsgroup ng : newsgroup_list){
-        cout << ng.id <<'\n';
-    }
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
         return;
     }
@@ -163,22 +257,20 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
         return;
     }
 
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = it != newsgroup_list.end();
+    auto ng_index = get_line_newsgroup(news_group_id);
+    bool exists = ng_index != -1;
     conn->write((unsigned char) Protocol::ANS_CREATE_ART);
     if (exists){
         conn->write((unsigned char) Protocol::ANS_ACK);
         Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
-        (*it).articles.push_back(art);
+        add_article(art);
     } else {
         conn->write((unsigned char) Protocol::ANS_NAK);
         conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
     }
     conn->write((unsigned char) Protocol::ANS_END);
 }
-void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
+void DiskServer::delete_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
         return;
     }
@@ -190,15 +282,13 @@ void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::COM_END){
         return;
     }
-    auto ng_it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = ng_it != newsgroup_list.end();
+    auto ng_index = get_line_newsgroup(news_group_id);
+    bool exists = ng_index != -1;
     conn->write((unsigned char) Protocol::ANS_DELETE_ART);
     if (exists){
-        auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
-        if(art_it!=(*ng_it).articles.end()){
-            (*ng_it).articles.erase(art_it);
+        auto art_index = get_line_article(article_id);
+        if(art_index!=-1){
+            delete_article(art_index);
             conn->write((unsigned char) Protocol::ANS_ACK);    
         } else {
         conn->write((unsigned char) Protocol::ANS_NAK);
@@ -210,7 +300,7 @@ void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
     }
     conn->write((unsigned char) Protocol::ANS_END);
 }
-void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
+void DiskServer::get_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
         return;
     }
@@ -222,21 +312,22 @@ void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::COM_END){
         return;
     }
-    auto ng_it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = ng_it != newsgroup_list.end();
+    auto ng_index = get_line_newsgroup(news_group_id);
+    bool exists = ng_index != -1;
     conn->write((unsigned char) Protocol::ANS_GET_ART);
     if (exists){
-        auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
-        if(art_it!=(*ng_it).articles.end()){
+        auto art_index = get_line_article(article_id);
+        if(art_index!=-1){
             conn->write((unsigned char) Protocol::ANS_ACK);
             //titel
-            send_string_p(conn, (*art_it).title);
+            std::string title = get_article_title(art_index);
+            send_string_p(conn, title);
             //author
-            send_string_p(conn, (*art_it).author);
+            std::string author = get_article_author(art_index);
+            send_string_p(conn, author);
             //text
-            send_string_p(conn, (*art_it).text);
+            std::string text = get_article_text(art_index);
+            send_string_p(conn, text);
         } else {
         conn->write((unsigned char) Protocol::ANS_NAK);
         conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
@@ -247,10 +338,10 @@ void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
     }
     conn->write((unsigned char) Protocol::ANS_END);
 }
-bool MemoryServer::isReady(){
+bool DiskServer::isReady(){
     return server.isReady();
 }
-void MemoryServer::serve_one(){
+void DiskServer::serve_one(){
     auto conn = server.waitForActivity();
     if (conn != nullptr) {
         try {
@@ -268,7 +359,7 @@ void MemoryServer::serve_one(){
 void serve_one(ServerInterface& server){
     server.serve_one();
 }
-MemoryServer init(int argc, char* argv[]){
+DiskServer init(int argc, char* argv[]){
         if (argc != 2) {
                 cerr << "Usage: myserver port-number" << endl;
                 exit(1);
@@ -282,7 +373,7 @@ MemoryServer init(int argc, char* argv[]){
                 exit(2);
         }
 
-        MemoryServer server(port);
+        DiskServer server(port);
         if (!server.isReady()) {
                 cerr << "Server initialization error." << endl;
                 exit(3);

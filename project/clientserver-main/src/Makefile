@@ -24,13 +24,14 @@ LDFLAGS   = -g -L../lib
 LDLIBS = -lclientserver
 
 # Targets
-PROGS = memserver client
+PROGS = memserver client diskserver
 
 all: $(PROGS)
 
 # Targets rely on implicit rules for compiling and linking
 # The dependency on libclientserver.a is not defined.
 memserver: memserver.o connection.o server.o
+diskserver: diskserver.o connection.o server.o
 client: connection.o
 
 SRC = $(wildcard *.cc)

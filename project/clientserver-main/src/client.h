@@ -10,7 +10,9 @@ void print_protocol_response(const PROTOCOL_H::Protocol);
 PROTOCOL_H::Protocol create_newsgroup(const Connection&);
 PROTOCOL_H::Protocol create_article(const Connection&);
 PROTOCOL_H::Protocol delete_newsgroup(const Connection&);
-void list_newsgroup(const Connection& conn);
+void list_newsgroup(const Connection&);
+void list_article(const Connection&);
+void get_article(const Connection&);
 int app(const Connection& conn);
 Connection init(int, char*[]);
 #endif
