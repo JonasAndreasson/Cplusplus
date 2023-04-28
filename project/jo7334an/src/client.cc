@@ -18,10 +18,10 @@ void send_N(const Connection& conn, unsigned int N){
     unsigned char byte3 = N % 256;
     N/=256;
     unsigned char byte4 = N % 256;
-    conn.write(byte4); // <- 0x00 0x00 0x00 0xN
-    conn.write(byte3); // <- 0x00 0x00 0x00 0xN
-    conn.write(byte2); // <- 0x00 0x00 0x00 0xN
-    conn.write(byte1); // <- 0x00 0x00 0x00 0xN
+    conn.write(byte4);
+    conn.write(byte3);
+    conn.write(byte2);
+    conn.write(byte1);
 }
 unsigned int read_N(const Connection& conn){
     unsigned char byte1 = conn.read();
@@ -112,7 +112,6 @@ Protocol create_newsgroup(const Connection& conn){
     }
 }
 Protocol create_article(const Connection& conn){
-    //GETTTING ALL INFO
     std::string newsgroup_name;
     std::string buffer;
     cout << "Please enter newsgroup name:" << endl;
@@ -150,7 +149,6 @@ Protocol create_article(const Connection& conn){
     } else {
         text = buffer;
     }
-    //SENDING
     conn.write((unsigned char) Protocol::COM_CREATE_ART);
     conn.write((unsigned char) Protocol::PAR_NUM);
     send_N(conn, (uint32_t)std::hash<std::string>{}(newsgroup_name));
@@ -183,20 +181,21 @@ void list_newsgroup(const Connection& conn){
     conn.write((unsigned char) Protocol::COM_LIST_NG);
     conn.write((unsigned char) Protocol::COM_END);
     if ((Protocol)conn.read() != Protocol::ANS_LIST_NG) {
-        cout << "Reponse wasn't ANS_LIST_NG";
+        cout << "Unexpected Server response" << endl;
         return;
     }
     if ((Protocol)conn.read() != Protocol::PAR_NUM){
-        cout << "Reponse wasn't PAR_NUM";
+        cout << "Unexpected Server response" << endl;
         return;
     }
-    unsigned int N = read_N(conn); //N
+    unsigned int N = read_N(conn);
     cout << N;
     for (unsigned int i = 0; i < N; ++i){
         if ((Protocol)conn.read() != Protocol::PAR_NUM){
+            cout << "Unexpected Server response" << endl;
             return;
         }
-        uint32_t id = read_N(conn); // ID for group
+        uint32_t id = read_N(conn); 
         std::string title = read_string_p(conn);
         pairs.push_back(std::make_pair(title, id));
     }
@@ -225,21 +224,22 @@ void list_article(const Connection& conn){
     send_N(conn, (uint32_t)std::hash<std::string>{}(newsgroup_name));
     conn.write((unsigned char) Protocol::COM_END);
     if ((Protocol)conn.read() != Protocol::ANS_LIST_ART) {
-        cout << "Reponse wasn't ANS_LIST_ART";
+        cout << "Unexpected Server response" << endl;
         return;
     }
     Protocol response = (Protocol)conn.read();
     if (response == Protocol::ANS_ACK){
         if ((Protocol)conn.read() != Protocol::PAR_NUM){
-        cout << "Reponse wasn't PAR_NUM";
+        cout << "Unexpected Server response" << endl;
         return;
     }
-    unsigned int N = read_N(conn); //N
+    unsigned int N = read_N(conn); 
     for (unsigned int i = 0; i < N; ++i){
         if ((Protocol)conn.read() != Protocol::PAR_NUM){
+            cout << "Unexpected Server response" << endl;
             return;
         }
-        uint32_t id = read_N(conn); // ID for article
+        uint32_t id = read_N(conn); 
         std::string title = read_string_p(conn);
         pairs.push_back(std::make_pair(title, id));
     }
@@ -277,7 +277,7 @@ Protocol delete_newsgroup(const Connection& conn){
     send_N(conn, id);
     conn.write((unsigned char) Protocol::COM_END);
 
-    // REPONSE
+
 
     if ((Protocol)conn.read() != Protocol::ANS_DELETE_NG){
         return Protocol::UNDEFINED;
@@ -316,16 +316,16 @@ void get_article(const Connection& conn){
     uint32_t article_id;
     cin >> article_id;
     uint32_t newsgroup_id = (uint32_t)std::hash<std::string>{}(newsgroup_name);
-    //Sending data
+
     conn.write((unsigned char)Protocol::COM_GET_ART);
     conn.write((unsigned char)Protocol::PAR_NUM);
     send_N(conn, newsgroup_id);
     conn.write((unsigned char)Protocol::PAR_NUM);
     send_N(conn, article_id);
     conn.write((unsigned char)Protocol::COM_END);
-    //Recieving data
+
     if ((Protocol) conn.read() != Protocol::ANS_GET_ART){
-        //Something went wrong
+
         return;
     }
     Protocol response = (Protocol) conn.read();
@@ -334,10 +334,10 @@ void get_article(const Connection& conn){
         std::string author = read_string_p(conn);
         std::string text = read_string_p(conn);
         if((Protocol) conn.read() != Protocol::ANS_END){
-            //Something went wrong
+            cout << "Unexpected Server response" << endl;
             return;
         }
-        // Print out the text
+ 
         cout << "Title: " << title <<endl;
         cout << "Author: " << author << endl;
         cout << text << endl;
@@ -347,11 +347,11 @@ void get_article(const Connection& conn){
         if (response == Protocol::ERR_NG_DOES_NOT_EXIST || response == Protocol::ERR_ART_DOES_NOT_EXIST){
             print_protocol_response(response);
         } else {
-            //something went wrong
+            cout << "Unexpected Server response" << endl;
             return;
         }
     } else {
-        //SOMETHING WENT WRONG
+        cout << "Unexpected Server response" << endl;
         return;
     }
     

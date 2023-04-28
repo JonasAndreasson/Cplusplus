@@ -85,12 +85,12 @@ class ServerInterface{
         std::string author;
         std::string text;
         unsigned int id; //unique and non-reusable
-        time_t created; // make this so it's invoked when the struct is created;
+        int64_t created; // make this so it's invoked when the struct is created;
     };
     struct Newsgroup{
         std::string name; //there is a limitation, although 2047 chars i likely enough
         unsigned int id; //unique and non-reusable
-        time_t created; // make this so it's invoked when the struct is created
+        int64_t created; // make this so it's invoked when the struct is created
         std::vector<Article> articles;
     };
 

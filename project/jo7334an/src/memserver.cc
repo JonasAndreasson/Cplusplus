@@ -19,14 +19,15 @@ void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
     unsigned char byte2 = conn->read();
     if ((Protocol)byte2 != Protocol::COM_END){
         cout << "Expected COM_END" << '\n';
-        //KILL CONNECTION
+        conn->~Connection();
+        return;
     }
     cout << "Sending response\n";
     send_newsgroup(conn);
     cout << "Reponse sent\n";
 }
 void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
-    conn->write((unsigned char)Protocol::ANS_LIST_NG); //8
+    conn->write((unsigned char)Protocol::ANS_LIST_NG);
     conn->write((unsigned char)Protocol::PAR_NUM);
     auto size = newsgroup_list.size();
     send_N(conn, size);
@@ -40,18 +41,20 @@ void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
 }
 
 void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned char byte = conn->read(); // string_p COM_END
+    unsigned char byte = conn->read();
     if ((Protocol)byte != Protocol::PAR_STRING){
         cout << "Invalid start parameter";
+        conn->~Connection();
         return;
     }
     unsigned int N = read_N(conn);
     std::string sb = "";
     for (unsigned int i = 0; i < N; i++){
-        byte = conn->read(); //this is the chars that should make a string.
+        byte = conn->read(); 
         sb+=byte;
     }
     if((Protocol)conn->read() != Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     
@@ -61,7 +64,7 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char)Protocol::ANS_CREATE_NG);
     if(!exists){
     std::vector<Article> articles();
-    Newsgroup ng = {sb,(uint32_t)std::hash<std::string>{}(sb),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
+    Newsgroup ng = {sb,(uint32_t)std::hash<std::string>{}(sb),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
     newsgroup_list.push_back(ng);
     conn->write((unsigned char)Protocol::ANS_ACK);
     conn->write((unsigned char)Protocol::ANS_END);
@@ -74,10 +77,12 @@ void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
 
 void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     unsigned int id = read_N(conn);
     if ((Protocol)conn->read() != Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     auto it = std::find_if(newsgroup_list.begin(),
@@ -96,10 +101,12 @@ void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
 }
 void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     unsigned int id = read_N(conn);
     if ((Protocol)conn->read() != Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     auto it = std::find_if(newsgroup_list.begin(),
@@ -126,6 +133,7 @@ void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
 }
 void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     long unsigned int news_group_id = read_N(conn);
@@ -134,6 +142,7 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
         cout << ng.id <<'\n';
     }
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto title_N = read_N(conn);
@@ -143,6 +152,7 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
     }
 
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto author_N = read_N(conn);
@@ -152,6 +162,7 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
     }
 
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto text_N = read_N(conn);
@@ -160,6 +171,7 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
         text+=conn->read();
     }
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
 
@@ -170,7 +182,7 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char) Protocol::ANS_CREATE_ART);
     if (exists){
         conn->write((unsigned char) Protocol::ANS_ACK);
-        Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
+        Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
         (*it).articles.push_back(art);
     } else {
         conn->write((unsigned char) Protocol::ANS_NAK);
@@ -180,14 +192,17 @@ void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
 }
 void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto news_group_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto article_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     auto ng_it = std::find_if(newsgroup_list.begin(),
@@ -212,14 +227,17 @@ void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
 }
 void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto news_group_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto article_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     auto ng_it = std::find_if(newsgroup_list.begin(),
@@ -231,11 +249,8 @@ void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
         auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
         if(art_it!=(*ng_it).articles.end()){
             conn->write((unsigned char) Protocol::ANS_ACK);
-            //titel
             send_string_p(conn, (*art_it).title);
-            //author
             send_string_p(conn, (*art_it).author);
-            //text
             send_string_p(conn, (*art_it).text);
         } else {
         conn->write((unsigned char) Protocol::ANS_NAK);

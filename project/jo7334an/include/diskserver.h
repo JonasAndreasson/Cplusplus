@@ -16,6 +16,7 @@ class DiskServer : public ServerInterface{
     std::string get_article_title(std::string);
     std::string get_article_author(std::string);
     std::string get_article_text(std::string);
+    
     virtual bool isReady();
     virtual void serve_one();
     virtual void list_newsgroup(std::shared_ptr<Connection>& conn);

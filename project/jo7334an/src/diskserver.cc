@@ -28,10 +28,10 @@ size_t DiskServer::database_size(){
     DIR * dirp;
     struct dirent * entry;
 
-    dirp = opendir("./database"); /* There should be error handling after this */
+    dirp = opendir("./database"); 
     while ((entry = readdir(dirp)) != NULL) {
         if (entry->d_type == DT_DIR) {
-            std::string subpath = entry->d_name; //converting for easier comparisons.
+            std::string subpath = entry->d_name; 
             if (subpath == "." || subpath==".."){
 
             } else {
@@ -48,10 +48,10 @@ size_t DiskServer::newsgroup_size(std::string path){
     DIR * dirp;
     struct dirent * entry;
 
-    dirp = opendir(path.c_str()); /* There should be error handling after this */
+    dirp = opendir(path.c_str()); 
     while ((entry = readdir(dirp)) != NULL) {
         if (entry->d_type == DT_DIR) {
-            std::string subpath = entry->d_name; //converting for easier comparisons.
+            std::string subpath = entry->d_name; 
             if (subpath == "." || subpath==".."){
 
             } else {
@@ -63,8 +63,13 @@ size_t DiskServer::newsgroup_size(std::string path){
     closedir(dirp);
     return file_count;
 }
-
-
+bool sort_article(const ServerInterface::Article& a1,const ServerInterface::Article& a2){
+    double d = std::difftime(a2.created, a1.created);
+    if (d<0){
+        return false;
+    } else 
+    return true;
+}
 void DiskServer::add_article(Article art, std::string path){
     path += std::to_string(art.id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
@@ -127,7 +132,7 @@ std::vector<ServerInterface::Article> DiskServer::articles_related_to_newsgroup(
         file.open(subpath+"/id");
         file >> id;
         file.close();
-        time_t created;
+        int64_t created;
         file.open(subpath+"/created");
         file >> created;
         file.close();
@@ -137,7 +142,18 @@ std::vector<ServerInterface::Article> DiskServer::articles_related_to_newsgroup(
     }
     }
     closedir(dirp);
+    std::sort(list.begin(), list.end(), sort_article);
+    for (auto& a : list){
+        cout << a.created << endl;
+    }
     return list;
+}
+bool sort_newsgroup(const ServerInterface::Newsgroup& ng1,const ServerInterface::Newsgroup& ng2){
+    double d = std::difftime(ng2.created, ng1.created);
+    if (d<0){
+        return false;
+    } else 
+    return true;
 }
 std::vector<ServerInterface::Newsgroup> DiskServer::newsgroup_list(){
     std::vector<ServerInterface::Newsgroup> list;
@@ -147,7 +163,7 @@ std::vector<ServerInterface::Newsgroup> DiskServer::newsgroup_list(){
     struct dirent * entry;
     dirp = opendir("./database");
     while ((entry = readdir(dirp)) != NULL) {
-    if (entry->d_type == DT_DIR) { /* If the entry is a regular file */
+    if (entry->d_type == DT_DIR) { 
         std::string subpath = entry->d_name;
         if (subpath == "." || subpath == ".."){
 
@@ -162,7 +178,7 @@ std::vector<ServerInterface::Newsgroup> DiskServer::newsgroup_list(){
         }
         name = name.substr(0,name.size()-1);
         file.close();
-        time_t created;
+        int64_t created;
         file.open(subpath+"/created");
         file >> created;
         file.close();
@@ -173,6 +189,10 @@ std::vector<ServerInterface::Newsgroup> DiskServer::newsgroup_list(){
     }
     }
     closedir(dirp);
+    sort(list.begin(), list.end(),sort_newsgroup);
+    for (auto& a : list){
+        cout << a.created << endl;
+    }
     return list;
 }
 std::string DiskServer::get_article_title(std::string path){
@@ -202,23 +222,18 @@ std::string DiskServer::get_article_text(std::string path){
     }
     return s.str();
 }
-
-
 DiskServer::DiskServer(int port):server(port){
 }
 void DiskServer::list_newsgroup(std::shared_ptr<Connection>& conn){
-    cout << "Entered NewsGroup\n";
     unsigned char byte2 = conn->read();
     if ((Protocol)byte2 != Protocol::COM_END){
-        cout << "Expected COM_END" << '\n';
-        //KILL CONNECTION
+        conn->~Connection();
+        return;
     }
-    cout << "Sending response\n";
     send_newsgroup(conn);
-    cout << "Reponse sent\n";
 }
 void DiskServer::send_newsgroup(std::shared_ptr<Connection>& conn){
-    conn->write((unsigned char)Protocol::ANS_LIST_NG); //8
+    conn->write((unsigned char)Protocol::ANS_LIST_NG);
     conn->write((unsigned char)Protocol::PAR_NUM);
     auto size = database_size();
     send_N(conn, size);
@@ -232,21 +247,20 @@ void DiskServer::send_newsgroup(std::shared_ptr<Connection>& conn){
     }
     conn->write((unsigned char)Protocol::ANS_END);
 }
-
 void DiskServer::create_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned char byte = conn->read(); // string_p COM_END
+    unsigned char byte = conn->read(); 
     if ((Protocol)byte != Protocol::PAR_STRING){
-        cout << "Invalid start parameter";
+        conn->~Connection();
         return;
     }
     unsigned int N = read_N(conn);
     std::string sb = "";
     for (unsigned int i = 0; i < N; i++){
-        byte = conn->read(); //this is the chars that should make a string.
+        byte = conn->read(); 
         sb+=byte;
     }
     if((Protocol)conn->read() != Protocol::COM_END){
-        cout << "Expected Com_END" << endl;
+        conn->~Connection();
         return;
     }
     cout << "Trying to create dir" << endl;
@@ -260,7 +274,7 @@ void DiskServer::create_newsgroup(std::shared_ptr<Connection>& conn){
         file << sb<< endl;
         file.close();
         file.open(path+"/created");
-        file <<time(NULL) << endl;
+        file <<std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << endl;
         file.close();
         conn->write((unsigned char)Protocol::ANS_ACK);
         conn->write((unsigned char)Protocol::ANS_END);
@@ -276,7 +290,7 @@ void rm_subdir(std::string path){
     dirp = opendir(path.c_str());
     while ((entry = readdir(dirp)) != NULL) {
         std::string subpath = entry->d_name;
-        if (entry->d_type == DT_DIR) { /* If the entry is a regular file */
+        if (entry->d_type == DT_DIR) {
             if (subpath == "." || subpath == ".."){
                     
             } else {
@@ -290,12 +304,14 @@ void rm_subdir(std::string path){
     closedir(dirp);
     rmdir(path.c_str());
 }
-void DiskServer::remove_newsgroup(std::shared_ptr<Connection>& conn){//スーパー　ありがとうございます！今は3時三十四分です。
+void DiskServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     unsigned int id = read_N(conn);
     if ((Protocol)conn->read() != Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     std::string path = "database/"+std::to_string(id);
@@ -314,10 +330,12 @@ void DiskServer::remove_newsgroup(std::shared_ptr<Connection>& conn){//スーパ
 }
 void DiskServer::list_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read() != Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     unsigned int id = read_N(conn);
     if ((Protocol)conn->read() != Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     std::string path = "database/"+std::to_string(id);
@@ -344,10 +362,12 @@ void DiskServer::list_article(std::shared_ptr<Connection>& conn){
 }
 void DiskServer::create_article(std::shared_ptr<Connection>& conn){
     if ((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     long unsigned int news_group_id = read_N(conn);
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto title_N = read_N(conn);
@@ -357,6 +377,7 @@ void DiskServer::create_article(std::shared_ptr<Connection>& conn){
     }
 
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto author_N = read_N(conn);
@@ -366,6 +387,7 @@ void DiskServer::create_article(std::shared_ptr<Connection>& conn){
     }
 
     if ((Protocol)conn->read()!=Protocol::PAR_STRING){
+        conn->~Connection();
         return;
     }
     auto text_N = read_N(conn);
@@ -374,6 +396,7 @@ void DiskServer::create_article(std::shared_ptr<Connection>& conn){
         text+=conn->read();
     }
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
 
@@ -383,7 +406,7 @@ void DiskServer::create_article(std::shared_ptr<Connection>& conn){
     conn->write((unsigned char) Protocol::ANS_CREATE_ART);
     if (exists){
         conn->write((unsigned char) Protocol::ANS_ACK);
-        Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),time(NULL)}; //Forcing 32bits conversion to accomadate for 32bit architecture.
+        Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
         add_article(art, path+"/");
     } else {
         rmdir(path.c_str());
@@ -394,14 +417,17 @@ void DiskServer::create_article(std::shared_ptr<Connection>& conn){
 }
 void DiskServer::delete_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto news_group_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto article_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     std::string path = "database/"+std::to_string(news_group_id);
@@ -428,14 +454,17 @@ void DiskServer::delete_article(std::shared_ptr<Connection>& conn){
 }
 void DiskServer::get_article(std::shared_ptr<Connection>& conn){
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto news_group_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::PAR_NUM){
+        conn->~Connection();
         return;
     }
     auto article_id = read_N(conn);
     if((Protocol)conn->read()!=Protocol::COM_END){
+        conn->~Connection();
         return;
     }
     std::string path = "database/"+std::to_string(news_group_id);
@@ -447,13 +476,10 @@ void DiskServer::get_article(std::shared_ptr<Connection>& conn){
         auto art_index = mkdir(path.c_str(),S_IRWXU);
         if(art_index==-1){
             conn->write((unsigned char) Protocol::ANS_ACK);
-            //titel
             std::string title = get_article_title(path);
             send_string_p(conn, title);
-            //author
             std::string author = get_article_author(path);
             send_string_p(conn, author);
-            //text
             std::string text = get_article_text(path);
             send_string_p(conn, text);
         } else {
