@@ -224,51 +224,10 @@ std::string DiskServer::get_article_text(std::string path){
 }
 DiskServer::DiskServer(int port):server(port){
 }
-void DiskServer::list_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned char byte2 = conn->read();
-    if ((Protocol)byte2 != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    send_newsgroup(conn);
-}
-void DiskServer::send_newsgroup(std::shared_ptr<Connection>& conn){
-    conn->write((unsigned char)Protocol::ANS_LIST_NG);
-    conn->write((unsigned char)Protocol::PAR_NUM);
-    auto size = database_size();
-    send_N(conn, size);
-    for (auto &newsgroup : newsgroup_list())
-    {
-        cout << newsgroup.id << endl;
-        cout << newsgroup.name << endl;
-        conn->write((unsigned char)Protocol::PAR_NUM);
-        send_N(conn,newsgroup.id);
-        send_string_p(conn, newsgroup.name);
-    }
-    conn->write((unsigned char)Protocol::ANS_END);
-}
-void DiskServer::create_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned char byte = conn->read(); 
-    if ((Protocol)byte != Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    unsigned int N = read_N(conn);
-    std::string sb = "";
-    for (unsigned int i = 0; i < N; i++){
-        byte = conn->read(); 
-        sb+=byte;
-    }
-    if((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    cout << "Trying to create dir" << endl;
+bool DiskServer::try_create_newsgroup(std::string& sb){
     std::string path = "database/"+std::to_string((uint32_t)std::hash<std::string>{}(sb));
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
-    perror("mkdir");
     bool exists = ng_index == -1;
-    conn->write((unsigned char)Protocol::ANS_CREATE_NG);
     if(!exists){
         ofstream file(path+"/name");
         file << sb<< endl;
@@ -276,13 +235,8 @@ void DiskServer::create_newsgroup(std::shared_ptr<Connection>& conn){
         file.open(path+"/created");
         file <<std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << endl;
         file.close();
-        conn->write((unsigned char)Protocol::ANS_ACK);
-        conn->write((unsigned char)Protocol::ANS_END);
-    } else {
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_ALREADY_EXISTS);
-        conn->write((unsigned char)Protocol::ANS_END);
     }
+    return exists;
 }
 void rm_subdir(std::string path){
     DIR * dirp, *sbdir;
@@ -304,195 +258,84 @@ void rm_subdir(std::string path){
     closedir(dirp);
     rmdir(path.c_str());
 }
-void DiskServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read() != Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    unsigned int id = read_N(conn);
-    if ((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
+bool DiskServer::try_remove_newsgroup(unsigned int id){
     std::string path = "database/"+std::to_string(id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
     bool exists = ng_index == -1;
-    conn->write((unsigned char)Protocol::ANS_DELETE_NG);
-        if (exists){
+    if (exists){
         rm_subdir(path);
-        conn->write((unsigned char)Protocol::ANS_ACK);
     } else {
         rmdir(path.c_str());
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
     }
-    conn->write((unsigned char)Protocol::ANS_END);
+    return exists;
 }
-void DiskServer::list_article(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read() != Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    unsigned int id = read_N(conn);
-    if ((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
+std::pair<bool,std::vector<ServerInterface::Article>> DiskServer::try_list_article(unsigned int id){
     std::string path = "database/"+std::to_string(id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
     bool exists = ng_index == -1;
-    conn->write((unsigned char)Protocol::ANS_LIST_ART);
-
     if (exists){
-        conn->write((unsigned char)Protocol::ANS_ACK);
-        conn->write((unsigned char)Protocol::PAR_NUM);
-        unsigned int size = newsgroup_size(path);
-        send_N(conn,size);
-        for (Article& a : articles_related_to_newsgroup(path)){
-            conn->write((unsigned char)Protocol::PAR_NUM);
-            send_N(conn,a.id);
-            send_string_p(conn, a.title);
-        }
+        std::pair<bool,std::vector<Article>> pair(true,articles_related_to_newsgroup(path));
+        return pair;
     } else{
         rmdir(path.c_str());
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
+        std::pair<bool,std::vector<Article>> pair(false,NULL);
+        return pair;
     }
-    conn->write((unsigned char)Protocol::ANS_END);
 }
-void DiskServer::create_article(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    long unsigned int news_group_id = read_N(conn);
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto title_N = read_N(conn);
-    std::string title = "";
-    for (unsigned int i =0; i<title_N;++i){
-        title+=conn->read();
-    }
-
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto author_N = read_N(conn);
-    std::string author = "";
-    for (unsigned int i =0; i<author_N;++i){
-        author+=conn->read();
-    }
-
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto text_N = read_N(conn);
-    std::string text = "";
-        for (unsigned int i =0; i<text_N;++i){
-        text+=conn->read();
-    }
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-
+bool DiskServer::try_create_article(long unsigned int news_group_id, std::string& title,std::string& author,std::string& text){
     std::string path = "database/"+std::to_string(news_group_id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
     bool exists = ng_index == -1;
-    conn->write((unsigned char) Protocol::ANS_CREATE_ART);
     if (exists){
-        conn->write((unsigned char) Protocol::ANS_ACK);
         Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
         add_article(art, path+"/");
     } else {
         rmdir(path.c_str());
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
     }
-    conn->write((unsigned char) Protocol::ANS_END);
+    return exists;
 }
-void DiskServer::delete_article(std::shared_ptr<Connection>& conn){
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto news_group_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto article_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    std::string path = "database/"+std::to_string(news_group_id);
+Protocol DiskServer::try_remove_article(unsigned int newsgroup_id, unsigned int article_id){
+    std::string path = "database/"+std::to_string(newsgroup_id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
     bool exists = ng_index == -1;
-    conn->write((unsigned char) Protocol::ANS_DELETE_ART);
     if (exists){
         path+="/"+std::to_string(article_id);
         auto art_index = mkdir(path.c_str(),S_IRWXU);
         if(art_index==-1){
             rm_subdir(path);
-            conn->write((unsigned char) Protocol::ANS_ACK);    
+            return Protocol::ANS_ACK;
         } else {
         rmdir(path.c_str());
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        return Protocol::ERR_ART_DOES_NOT_EXIST;
         }
     } else {
         rmdir(path.c_str());
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+        return Protocol::ERR_NG_DOES_NOT_EXIST;
     }
-    conn->write((unsigned char) Protocol::ANS_END);
 }
-void DiskServer::get_article(std::shared_ptr<Connection>& conn){
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto news_group_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto article_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    std::string path = "database/"+std::to_string(news_group_id);
+std::pair<Protocol, ServerInterface::Article> DiskServer::try_get_article(unsigned int newsgroup_id, unsigned int article_id){
+    std::string path = "database/"+std::to_string(newsgroup_id);
     auto ng_index = mkdir(path.c_str(),S_IRWXU);
     bool exists = ng_index == -1;
-    conn->write((unsigned char) Protocol::ANS_GET_ART);
     if (exists){
         path += "/"+std::to_string(article_id);
         auto art_index = mkdir(path.c_str(),S_IRWXU);
         if(art_index==-1){
-            conn->write((unsigned char) Protocol::ANS_ACK);
             std::string title = get_article_title(path);
-            send_string_p(conn, title);
             std::string author = get_article_author(path);
-            send_string_p(conn, author);
             std::string text = get_article_text(path);
-            send_string_p(conn, text);
+            std::pair<Protocol, Article> pair(Protocol::ANS_ACK, {title, author, text, 0,0});
+            return pair;
         } else {
         rmdir(path.c_str());
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        std::pair<Protocol, Article> pair(Protocol::ERR_ART_DOES_NOT_EXIST, {"", "", "", 0,0});
+        return pair;
         }
     } else {
         rmdir(path.c_str());
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+        std::pair<Protocol, Article> pair(Protocol::ERR_NG_DOES_NOT_EXIST, {"", "", "", 0,0});
+        return pair;
     }
-    conn->write((unsigned char) Protocol::ANS_END);
 }
 bool DiskServer::isReady(){
     return server.isReady();

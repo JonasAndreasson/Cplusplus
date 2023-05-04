@@ -12,255 +12,96 @@
 using std::cerr;
 using std::endl;
 using std::cout;
-MemoryServer::MemoryServer(int port):server(port),newsgroup_list(){
+MemoryServer::MemoryServer(int port):server(port),newsgroup_vector(){
 }
-void MemoryServer::list_newsgroup(std::shared_ptr<Connection>& conn){
-    cout << "Entered NewsGroup\n";
-    unsigned char byte2 = conn->read();
-    if ((Protocol)byte2 != Protocol::COM_END){
-        cout << "Expected COM_END" << '\n';
-        conn->~Connection();
-        return;
-    }
-    cout << "Sending response\n";
-    send_newsgroup(conn);
-    cout << "Reponse sent\n";
+size_t MemoryServer::database_size(){
+    return newsgroup_vector.size();
 }
-void MemoryServer::send_newsgroup(std::shared_ptr<Connection>& conn){
-    conn->write((unsigned char)Protocol::ANS_LIST_NG);
-    conn->write((unsigned char)Protocol::PAR_NUM);
-    auto size = newsgroup_list.size();
-    send_N(conn, size);
-    for (auto &newsgroup : newsgroup_list)
-    {
-        conn->write((unsigned char)Protocol::PAR_NUM);
-        send_N(conn,newsgroup.id);
-        send_string_p(conn, newsgroup.name);
-    }
-    conn->write((unsigned char)Protocol::ANS_END);
+std::vector<ServerInterface::Newsgroup> MemoryServer::newsgroup_list(){
+    return newsgroup_vector;
 }
+bool MemoryServer::try_create_newsgroup(std::string& sb){
+    bool exists = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
+             [&sb] (Newsgroup ng) -> bool { return sb == ng.name; }) != newsgroup_vector.end();
 
-void MemoryServer::create_newsgroup(std::shared_ptr<Connection>& conn){
-    unsigned char byte = conn->read();
-    if ((Protocol)byte != Protocol::PAR_STRING){
-        cout << "Invalid start parameter";
-        conn->~Connection();
-        return;
-    }
-    unsigned int N = read_N(conn);
-    std::string sb = "";
-    for (unsigned int i = 0; i < N; i++){
-        byte = conn->read(); 
-        sb+=byte;
-    }
-    if((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    
-    bool exists = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&sb] (Newsgroup ng) -> bool { return sb == ng.name; }) != newsgroup_list.end();
-    conn->write((unsigned char)Protocol::ANS_CREATE_NG);
     if(!exists){
-    std::vector<Article> articles();
+    std::vector<Article> articles;
     Newsgroup ng = {sb,(uint32_t)std::hash<std::string>{}(sb),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
-    newsgroup_list.push_back(ng);
-    conn->write((unsigned char)Protocol::ANS_ACK);
-    conn->write((unsigned char)Protocol::ANS_END);
-    } else {
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_ALREADY_EXISTS);
-        conn->write((unsigned char)Protocol::ANS_END);
+    newsgroup_vector.push_back(ng);
     }
+    return exists;
 }
-
-void MemoryServer::remove_newsgroup(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read() != Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    unsigned int id = read_N(conn);
-    if ((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
+bool MemoryServer::try_remove_newsgroup(unsigned int id){
+    auto it = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
              [&id] (Newsgroup ng) -> bool { return id == ng.id; });
-    bool exists = it != newsgroup_list.end();
-    conn->write((unsigned char)Protocol::ANS_DELETE_NG);
+    bool exists = it != newsgroup_vector.end();
     if (exists){
-        newsgroup_list.erase(it);
-        conn->write((unsigned char)Protocol::ANS_ACK);
-    } else {
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
+        newsgroup_vector.erase(it);
     }
-    conn->write((unsigned char)Protocol::ANS_END);
+    return exists;
 }
-void MemoryServer::list_article(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read() != Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    unsigned int id = read_N(conn);
-    if ((Protocol)conn->read() != Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
+std::pair<bool,std::vector<ServerInterface::Article>> MemoryServer::try_list_article(unsigned int id){
+    auto it = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
              [&id] (Newsgroup ng) -> bool { return id == ng.id; });
-    bool exists = it != newsgroup_list.end();
-    conn->write((unsigned char)Protocol::ANS_LIST_ART);
-
+    bool exists = it != newsgroup_vector.end();
     if (exists){
-        conn->write((unsigned char)Protocol::ANS_ACK);
-        conn->write((unsigned char)Protocol::PAR_NUM);
-        unsigned int size = (*it).articles.size();
-        send_N(conn,size);
-        for (Article& a : (*it).articles){
-            conn->write((unsigned char)Protocol::PAR_NUM);
-            send_N(conn,a.id);
-            send_string_p(conn, a.title);
-        }
+        std::pair<bool,std::vector<Article>> pair(true,(*it).articles);
+        return pair;
     } else{
-        conn->write((unsigned char)Protocol::ANS_NAK);
-        conn->write((unsigned char)Protocol::ERR_NG_DOES_NOT_EXIST);
+        std::pair<bool,std::vector<Article>> pair(false,NULL);
+        return pair;
     }
-    conn->write((unsigned char)Protocol::ANS_END);
 }
-void MemoryServer::create_article(std::shared_ptr<Connection>& conn){
-    if ((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    long unsigned int news_group_id = read_N(conn);
-    cout << news_group_id << '\n';
-    for (Newsgroup ng : newsgroup_list){
-        cout << ng.id <<'\n';
-    }
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto title_N = read_N(conn);
-    std::string title = "";
-    for (unsigned int i =0; i<title_N;++i){
-        title+=conn->read();
-    }
-
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto author_N = read_N(conn);
-    std::string author = "";
-    for (unsigned int i =0; i<author_N;++i){
-        author+=conn->read();
-    }
-
-    if ((Protocol)conn->read()!=Protocol::PAR_STRING){
-        conn->~Connection();
-        return;
-    }
-    auto text_N = read_N(conn);
-    std::string text = "";
-        for (unsigned int i =0; i<text_N;++i){
-        text+=conn->read();
-    }
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-
-    auto it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
+bool MemoryServer::try_create_article(long unsigned int news_group_id, std::string& title, std::string& author, std::string& text){
+    auto it = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
              [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = it != newsgroup_list.end();
-    conn->write((unsigned char) Protocol::ANS_CREATE_ART);
+    bool exists = it != newsgroup_vector.end();
     if (exists){
-        conn->write((unsigned char) Protocol::ANS_ACK);
         Article art{title, author, text, (uint32_t)std::hash<std::string>{}(text),std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
         (*it).articles.push_back(art);
-    } else {
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
     }
-    conn->write((unsigned char) Protocol::ANS_END);
+    return exists;
 }
-void MemoryServer::delete_article(std::shared_ptr<Connection>& conn){
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto news_group_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto article_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    auto ng_it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = ng_it != newsgroup_list.end();
-    conn->write((unsigned char) Protocol::ANS_DELETE_ART);
+Protocol MemoryServer::try_remove_article(unsigned int newsgroup_id, unsigned int article_id){
+    auto ng_it = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
+             [&newsgroup_id] (Newsgroup ng) -> bool { return newsgroup_id == ng.id; });
+    bool exists = ng_it != newsgroup_vector.end();
     if (exists){
         auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
         if(art_it!=(*ng_it).articles.end()){
             (*ng_it).articles.erase(art_it);
-            conn->write((unsigned char) Protocol::ANS_ACK);    
+            return Protocol::ANS_ACK;    
         } else {
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        return Protocol::ERR_ART_DOES_NOT_EXIST;
         }
     } else {
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+        return Protocol::ERR_NG_DOES_NOT_EXIST;
     }
-    conn->write((unsigned char) Protocol::ANS_END);
 }
-void MemoryServer::get_article(std::shared_ptr<Connection>& conn){
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto news_group_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::PAR_NUM){
-        conn->~Connection();
-        return;
-    }
-    auto article_id = read_N(conn);
-    if((Protocol)conn->read()!=Protocol::COM_END){
-        conn->~Connection();
-        return;
-    }
-    auto ng_it = std::find_if(newsgroup_list.begin(),
-             newsgroup_list.end(), 
-             [&news_group_id] (Newsgroup ng) -> bool { return news_group_id == ng.id; });
-    bool exists = ng_it != newsgroup_list.end();
-    conn->write((unsigned char) Protocol::ANS_GET_ART);
+std::pair<Protocol, ServerInterface::Article> MemoryServer::try_get_article(unsigned int newsgroup_id, unsigned int article_id){
+    auto ng_it = std::find_if(newsgroup_vector.begin(),
+             newsgroup_vector.end(), 
+             [&newsgroup_id] (Newsgroup ng) -> bool { return newsgroup_id == ng.id; });
+    bool exists = ng_it != newsgroup_vector.end();
     if (exists){
         auto art_it = std::find_if((*ng_it).articles.begin(),(*ng_it).articles.end(),[&article_id] (Article art) -> bool { return article_id == art.id; });
         if(art_it!=(*ng_it).articles.end()){
-            conn->write((unsigned char) Protocol::ANS_ACK);
-            send_string_p(conn, (*art_it).title);
-            send_string_p(conn, (*art_it).author);
-            send_string_p(conn, (*art_it).text);
+            std::pair<Protocol, Article> pair(Protocol::ANS_ACK,(*art_it));
+            return pair;
         } else {
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_ART_DOES_NOT_EXIST);
+        std::pair<Protocol, Article> pair(Protocol::ERR_ART_DOES_NOT_EXIST, {"", "", "", 0,0});
+        return pair;
         }
     } else {
-        conn->write((unsigned char) Protocol::ANS_NAK);
-        conn->write((unsigned char) Protocol::ERR_NG_DOES_NOT_EXIST);
+        std::pair<Protocol, Article> pair(Protocol::ERR_NG_DOES_NOT_EXIST, {"", "", "", 0,0});
+        return pair;
     }
-    conn->write((unsigned char) Protocol::ANS_END);
+    
 }
 bool MemoryServer::isReady(){
     return server.isReady();
