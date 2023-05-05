@@ -337,23 +337,14 @@ std::pair<Protocol, ServerInterface::Article> DiskServer::try_get_article(unsign
         return pair;
     }
 }
-bool DiskServer::isReady(){
-    return server.isReady();
+std::shared_ptr<Connection> DiskServer::waitForActivity(){
+    return server.waitForActivity();
 }
-void DiskServer::serve_one(){
-    auto conn = server.waitForActivity();
-    if (conn != nullptr) {
-        try {
-            process_request(conn);
-        } catch (ConnectionClosedException&) {
-            server.deregisterConnection(conn);
-            cout << "Client closed connection" << endl;
-        }
-    } else {
-        conn = std::make_shared<Connection>();
-        server.registerConnection(conn);
-        cout << "New client connects" << endl;
-    }
+void DiskServer::registerConnection(const std::shared_ptr<Connection>& conn){
+    server.registerConnection(conn);
+}
+void DiskServer::deregisterConnection(const std::shared_ptr<Connection>& conn){
+    server.deregisterConnection(conn);
 }
 void serve_one(ServerInterface& server){
     server.serve_one();

@@ -6,8 +6,6 @@
 class MemoryServer : public ServerInterface{
     public:
     MemoryServer(int port);
-    virtual bool isReady();
-    virtual void serve_one();
     virtual size_t database_size();
     virtual std::vector<Newsgroup> newsgroup_list();
     virtual bool try_create_newsgroup(std::string& sb);
@@ -16,9 +14,14 @@ class MemoryServer : public ServerInterface{
     virtual Protocol try_remove_article(unsigned int newsgroup_id, unsigned int article_id);
     virtual std::pair<bool,std::vector<Article>> try_list_article(unsigned int newsgroup_id);
     virtual std::pair<Protocol, Article> try_get_article(unsigned int newsgroup_id, unsigned int article_id);
+    virtual std::shared_ptr<Connection> waitForActivity();
+    virtual void registerConnection(const std::shared_ptr<Connection>& conn);
+    virtual void deregisterConnection(const std::shared_ptr<Connection>& conn);
+    virtual Server& get_server(){return server;}
+    virtual bool isReady(){return server.isReady();}
     private:
-    Server server;
     std::vector<Article> article_list;
     std::vector<Newsgroup> newsgroup_vector;
+    Server server;
 };
 #endif

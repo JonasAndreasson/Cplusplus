@@ -44,8 +44,26 @@ class ServerInterface{
     virtual Protocol try_remove_article(unsigned int newsgroup_id, unsigned int article_id) = 0;
     virtual std::pair<Protocol, Article> try_get_article(unsigned int newsgroup_id, unsigned int article_id) = 0;
     virtual std::pair<bool,std::vector<Article>> try_list_article(unsigned int newsgroup_id) = 0;
-    virtual bool isReady() = 0;       //fix this too. maybe
-    virtual void serve_one() = 0;    //FIX THIS it's so easy man and add parameterized
+    virtual Server& get_server() = 0;
+    virtual bool isReady() = 0;
+    virtual void serve_one(){
+        auto conn = waitForActivity();
+        if (conn != nullptr) {
+            try {
+                process_request(conn);
+            } catch (ConnectionClosedException&) {
+                deregisterConnection(conn);
+                std::cout << "Client closed connection" << std::endl;
+            }
+        } else {
+            conn = std::make_shared<Connection>();
+            registerConnection(conn);
+            std::cout << "New client connects" << std::endl;
+        }
+    }
+    virtual std::shared_ptr<Connection> waitForActivity() = 0;
+    virtual void registerConnection(const std::shared_ptr<Connection>& conn) = 0;
+    virtual void deregisterConnection(const std::shared_ptr<Connection>& conn) = 0;
     virtual void list_newsgroup(std::shared_ptr<Connection>& conn){
         unsigned char byte2 = conn->read();
         if ((Protocol)byte2 != Protocol::COM_END){

@@ -12,8 +12,7 @@
 using std::cerr;
 using std::endl;
 using std::cout;
-MemoryServer::MemoryServer(int port):server(port),newsgroup_vector(){
-}
+MemoryServer::MemoryServer(int port):server(port),newsgroup_vector(){}
 size_t MemoryServer::database_size(){
     return newsgroup_vector.size();
 }
@@ -45,13 +44,13 @@ bool MemoryServer::try_remove_newsgroup(unsigned int id){
 std::pair<bool,std::vector<ServerInterface::Article>> MemoryServer::try_list_article(unsigned int id){
     auto it = std::find_if(newsgroup_vector.begin(),
              newsgroup_vector.end(), 
-             [&id] (Newsgroup ng) -> bool { return id == ng.id; });
+             [&id] (ServerInterface::Newsgroup ng) -> bool { return id == ng.id; });
     bool exists = it != newsgroup_vector.end();
     if (exists){
         std::pair<bool,std::vector<Article>> pair(true,(*it).articles);
         return pair;
     } else{
-        std::pair<bool,std::vector<Article>> pair(false,NULL);
+        std::pair<bool,std::vector<ServerInterface::Article>> pair(false,NULL);
         return pair;
     }
 }
@@ -103,27 +102,17 @@ std::pair<Protocol, ServerInterface::Article> MemoryServer::try_get_article(unsi
     }
     
 }
-bool MemoryServer::isReady(){
-    return server.isReady();
+
+std::shared_ptr<Connection> MemoryServer::waitForActivity(){
+    return server.waitForActivity();
 }
-void MemoryServer::serve_one(){
-    auto conn = server.waitForActivity();
-    if (conn != nullptr) {
-        try {
-            process_request(conn);
-        } catch (ConnectionClosedException&) {
-            server.deregisterConnection(conn);
-            cout << "Client closed connection" << endl;
-        }
-    } else {
-        conn = std::make_shared<Connection>();
-        server.registerConnection(conn);
-        cout << "New client connects" << endl;
-    }
+void MemoryServer::registerConnection(const std::shared_ptr<Connection>& conn){
+    server.registerConnection(conn);
 }
-void serve_one(ServerInterface& server){
-    server.serve_one();
+void MemoryServer::deregisterConnection(const std::shared_ptr<Connection>& conn){
+    server.deregisterConnection(conn);
 }
+
 MemoryServer init(int argc, char* argv[]){
         if (argc != 2) {
                 cerr << "Usage: myserver port-number" << endl;
@@ -138,19 +127,19 @@ MemoryServer init(int argc, char* argv[]){
                 exit(2);
         }
 
-        MemoryServer server(port);
-        if (!server.isReady()) {
+        MemoryServer memory_server(port);
+        if (!memory_server.isReady()) {
                 cerr << "Server initialization error." << endl;
                 exit(3);
         }
-        return server;
+        return memory_server;
 }
 int main(int argc, char* argv[])
 {
         auto server = init(argc, argv);
 
         while (true) {
-            serve_one(server);
+            server.serve_one();
         }
         return 0;
 }
