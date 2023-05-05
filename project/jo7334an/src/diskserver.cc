@@ -346,9 +346,7 @@ void DiskServer::registerConnection(const std::shared_ptr<Connection>& conn){
 void DiskServer::deregisterConnection(const std::shared_ptr<Connection>& conn){
     server.deregisterConnection(conn);
 }
-void serve_one(ServerInterface& server){
-    server.serve_one();
-}
+
 DiskServer init(int argc, char* argv[]){
         if (argc != 2) {
                 cerr << "Usage: myserver port-number" << endl;
@@ -375,7 +373,7 @@ int main(int argc, char* argv[])
         auto server = init(argc, argv);
 
         while (true) {
-            serve_one(server);
+            server.serve_one();
         }
         return 0;
 }

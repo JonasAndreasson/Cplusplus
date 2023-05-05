@@ -7,15 +7,14 @@
 class DiskServer : public ServerInterface{
     public:
     DiskServer(int port);
-    
+    //HELPER FUNCTIONS
     size_t newsgroup_size(std::string);
     void add_article(Article, std::string);
-    Newsgroup parse_newsgroup(std::string);
     std::vector<Article> articles_related_to_newsgroup(std::string);
     std::string get_article_title(std::string);
     std::string get_article_author(std::string);
     std::string get_article_text(std::string);
-    
+    //OVERLOADED FUNCTIONS
     virtual std::shared_ptr<Connection> waitForActivity();
     virtual void registerConnection(const std::shared_ptr<Connection>& conn);
     virtual void deregisterConnection(const std::shared_ptr<Connection>& conn);
